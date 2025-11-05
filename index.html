@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Member Splitter v2.3.4-PWA (GitHub-ready)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="theme-color" content="#0b5cad" />
+<link id="manifestLink" rel="manifest" href="#">
+<style>
+  :root{
+    --brand:#0b5cad;--brand-600:#0a529c;--bg:#f6f8fb;--text:#111827;--muted:#6b7280;
+    --ctrlbg:#eaf2fb;--ctrlline:#d9e6fb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  header,footer{background:linear-gradient(180deg,var(--brand),var(--brand-600));color:#fff}
+  header{padding:16px 20px;display:flex;align-items:center;
+         justify-content:space-between;gap:12px;flex-wrap:wrap}
+  header h1{margin:0;font-size:1.35rem;font-weight:800;display:flex;align-items:center;gap:10px}
+  header small{opacity:.95;font-weight:700}
+  main{max-width:980px;margin:22px auto;padding:0 16px 96px}
+  .card{background:#fff;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,.06);
+        padding:16px;border:1px solid #e5e7eb;margin-bottom:16px}
+  .btn{background:var(--brand);color:#fff;border:0;border-radius:12px;
+       padding:10px 14px;font-weight:700;cursor:pointer}
+  .btn:disabled{opacity:.6;cursor:not-allowed}
+  select,input[type=file]{padding:10px 12px;border:1px solid #d1d5db;
+       border-radius:12px;background:#fff}
+  .controls-bar{background:var(--ctrlbg);border:1px solid var(--ctrlline);
+       padding:18px;border-radius:14px;margin-top:22px;margin-bottom:18px}
+  .controls-row{display:flex;flex-wrap:wrap;justify-content:center;
+       gap:18px 16px;align-items:center}
+  .controls-row .btn{min-width:140px}
+  .progress{font-size:.95rem;color:var(--muted)}
+  #overlay{position:fixed;inset:0;background:rgba(255,255,255,.75);
+       display:none;align-items:center;justify-content:center;z-index:50}
+  .spinner{width:54px;height:54px;border:6px solid #e5e7eb;
+       border-top-color:var(--brand);border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .counts{margin-top:8px;font-size:.95rem;color:#1f2937}
+  .counts .line{padding:4px 8px;border-radius:8px;background:#f9fafb;
+       border:1px solid #eef2f7;margin:4px 0}
+  .counts .subcounts{margin-left:20px;font-size:.9rem;color:#374151}
+  #readmePanel{display:none;margin-top:12px;background:#eef2ff;border:1px solid #c7d2fe;
+       padding:16px;border-radius:12px;font-size:.95rem;position:relative}
+  #readmePanel h3{margin-top:0;color:#1e3a8a}
+  .readme-close{position:absolute;top:8px;right:10px;border:1px solid #0b5cad;
+       background:#fff;color:#0b5cad;border-radius:10px;padding:4px 8px;
+       cursor:pointer;font-weight:700}
+  footer{position:fixed;left:0;right:0;bottom:0;padding:12px 16px;
+       text-align:center;font-size:.9rem}
+  #appIcon{width:50px;height:50px;border-radius:10px;display:inline-block}
+  #swStatus{margin-top:8px;text-align:center;color:#374151}
+</style>
+<!-- GitHub-ready: start_url "./", scope "./" -->
+</head>
+<body>
+<header>
+  <h1>
+    <canvas id="appIcon" width="50" height="50"></canvas>
+    Member Splitter <small>v2.3.4-PWA (GitHub-ready)</small>
+  </h1>
+</header>
+
+<main>
+  <div class="card">
+    <div class="controls-bar">
+      <div class="controls-row">
+        <input id="file" type="file" accept=".xlsx,.xls" />
+        <select id="groupBy">
+          <option value="District">District</option>
+          <option value="Squadron">Squadron</option>
+          <option value="DistrictSortedBySquadron">District (rows sorted by Squadron)</option>
+        </select>
+        <button id="build" class="btn" disabled>Generate workbook</button>
+        <button id="save" class="btn" disabled>Save as…</button>
+        <button id="toggleReadme" class="btn" type="button">View README</button>
+        <span id="status" class="progress">Waiting…</span>
+      </div>
+    </div>
+
+    <!-- Service Worker status -->
+    <div id="swStatus">Service Worker: ❌</div>
+
+    <!-- README -->
+    <div id="readmePanel">
+      <button class="readme-close" id="readmeCloseBtn">× Close</button>
+      <h3>About This Tool</h3>
+      <p><strong>Purpose:</strong> Organize membership data by <em>District</em> or <em>Squadron</em>. The app creates one worksheet per group and a first-tab <em>Summary</em> sheet with totals by membership type (Regular, Regular Life, Former Member, Non Member, Other).</p>
+      <p><strong>Usage:</strong> 1) Load your .xlsx  2) Choose grouping  3) Click <em>Generate workbook</em>  4) Click <em>Save as…</em>.</p>
+      <p><strong>Notes:</strong> Works completely offline after first open. “(Unspecified)” group is listed first; others sort A→Z. Exports Excel file only.</p>
+      <p><strong>Support:</strong> ds-niagara@cps-ecp.ca — © 2025 CanBoat / NautiSavoir</p>
+    </div>
+
+    <div id="counts" class="counts"></div>
+    <div id="summary" class="progress">No data yet.</div>
+  </div>
+</main>
+
+<footer>
+  © 2025 CanBoat / NautiSavoir — Member Splitter v2.3.4-PWA (GitHub-ready) — Excel Output Only
+</footer>
+
+<div id="overlay"><div class="spinner" aria-label="Processing"></div></div>
+
+<!-- Load SheetJS -->
+<script>
+(function(){
+  var s=document.createElement('script');
+  s.src='./xlsx.full.min.js';
+  s.onload=()=>console.log('SheetJS loaded');
+  s.onerror=()=>alert('xlsx.full.min.js missing in folder.');
+  document.head.appendChild(s);
+})();
+</script>
+
+<!-- Draw icon -->
+<script>
+(function(){
+  const c=document.getElementById('appIcon');
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#0b5cad'; ctx.fillRect(0,0,50,50);
+  ctx.fillStyle='#fff'; ctx.font='bold 22px system-ui,Segoe UI,Arial';
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('MS',25,28);
+})();
+</script>
+
+<!-- Manifest -->
+<script>
+(function(){
+  const manifest={
+    name:'Member Splitter',
+    short_name:'Member Splitter',
+    start_url:'./',
+    scope:'./',
+    display:'standalone',
+    background_color:'#0b5cad',
+    theme_color:'#0b5cad',
+    icons:[
+      {src:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAAAwCAYAAABm0m1iAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAUklEQVR4nO3NsQkAMAxFQf3/0yMo0o3Eo4B8w4m2Gx8gMS2kDa9u/3oAAAB8i3wMSU1MS0xNTExMTExMTExMTExMTExMTExMS0xNS8yICBNUyAtIGJsdWUAAADyKc5oXg1xT3QAAAAASUVORK5CYII=',sizes:'192x192',type:'image/png'}
+    ]
+  };
+  const url=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'}));
+  document.getElementById('manifestLink').setAttribute('href',url);
+})();
+</script>
+
+<!-- External Service Worker registration -->
+<script>
+(function(){
+  const el=document.getElementById('swStatus');
+  if(!('serviceWorker' in navigator)){ el.textContent='Service Worker: ❌'; return; }
+  navigator.serviceWorker.register('./sw.js',{scope:'./'})
+    .then(()=>el.textContent='Service Worker: ✅')
+    .catch(()=>el.textContent='Service Worker: ❌');
+})();
+</script>
+
+<!-- App Logic (Excel handling) -->
+<script>
+(function(){
+  const fileInput=document.getElementById('file');
+  const groupBySel=document.getElementById('groupBy');
+  const buildBtn=document.getElementById('build');
+  const saveBtn=document.getElementById('save');
+  const statusEl=document.getElementById('status');
+  const overlay=document.getElementById('overlay');
+  const countsEl=document.getElementById('counts');
+  const summaryEl=document.getElementById('summary');
+  const toggleReadme=document.getElementById('toggleReadme');
+  const readmePanel=document.getElementById('readmePanel');
+  const readmeCloseBtn=document.getElementById('readmeCloseBtn');
+
+  function showOverlay(on){overlay.style.display=on?'flex':'none';}
+  function setStatus(msg){statusEl.textContent=msg;}
+
+  toggleReadme.onclick=()=>{const open=readmePanel.style.display==='block';
+    readmePanel.style.display=open?'none':'block';
+    toggleReadme.textContent=open?'View README':'Hide README';};
+  readmeCloseBtn.onclick=()=>{readmePanel.style.display='none';toggleReadme.textContent='View README';};
+
+  function waitForXLSX(cb){let t=0;(function loop(){
+    if(window.XLSX&&XLSX.utils&&XLSX.read){cb();return;}
+    if(++t>80){alert('xlsx.full.min.js missing or blocked');return;}
+    setTimeout(loop,120);
+  })();}
+
+  fileInput.addEventListener('change',()=>{
+    if(!fileInput.files[0]){setStatus('Waiting…');buildBtn.disabled=true;return;}
+    waitForXLSX(async()=>{
+      showOverlay(true);setStatus('Reading workbook…');
+      try{
+        const f=fileInput.files[0];
+        const data=await f.arrayBuffer();
+        const wb=XLSX.read(data,{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+        window._rows=rows;
+        showOverlay(false);
+        setStatus('Loaded '+rows.length+' rows from "'+wb.SheetNames[0]+'".');
+        summaryEl.textContent=rows.length?'Ready to generate.':'No rows detected.';
+        countsEl.innerHTML=''; buildBtn.disabled=!rows.length;
+      }catch(e){console.error(e);alert('Read failed');showOverlay(false);}
+    });
+  });
+
+  function sanitize(n){if(!n||!String(n).trim())return'(Unspecified)';
+    const c=String(n).replace(/[:\\/?*\\[\\]]/g,' ').replace(/\\s+/g,' ').trim();
+    return c.length>31?c.substring(0,31):c;}
+  function groupBy(a,k){const m=new Map();a.forEach(r=>{
+    const v=sanitize(r[k]||'(Unspecified)');if(!m.has(v))m.set(v,[]);
+    m.get(v).push(r);});return m;}
+  function sortGroups(m){const a=[...m.entries()];
+    a.sort((x,y)=>x[0]==='(Unspecified)'?-1:y[0]==='(Unspecified)'?1:x[0].localeCompare(y[0]));
+    return a;}
+  function sortRows(r,k){return r.slice().sort((a,b)=>{
+    const av=(a[k]||'').toLowerCase(),bv=(b[k]||'').toLowerCase();
+    if(av===''||av==='(unspecified)')return-1;
+    if(bv===''||bv==='(unspecified)')return 1;
+    return av.localeCompare(bv);});}
+  function normType(s){const t=(s||'').toLowerCase().trim();
+    if(t.startsWith('regular')&&!t.includes('life'))return'Regular';
+    if(t.includes('life'))return'Regular Life';
+    if(t.includes('former'))return'Former Member';
+    if(t.includes('non')&&t.includes('member'))return'Non Member';
+    return'Other';}
+  function countTypes(r){const b={Regular:0,'Regular Life':0,'Former Member':0,'Non Member':0,Other:0};
+    r.forEach(x=>b[normType(x['Membership Type'])]++);return b;}
+
+  function build(){
+    const rows=window._rows||[];if(!rows.length){alert('No data');return;}
+    const mode=groupBySel.value;const key=(mode==='Squadron'?'Squadron':'District');
+    const groups=sortGroups(groupBy(rows,key));
+    const wb=XLSX.utils.book_new();let html='<h4>Group counts</h4>';
+    const sum=[];const tot={Regular:0,'Regular Life':0,'Former Member':0,'Non Member':0,Other:0,Total:0};
+    groups.forEach(([n,rs])=>{
+      const use=(mode==='DistrictSortedBySquadron')?sortRows(rs,'Squadron'):sortRows(rs,key);
+      const ws=XLSX.utils.json_to_sheet(use);const c=use.length;const st=countTypes(use);
+      Object.keys(tot).forEach(k=>{if(k!=='Total')tot[k]+=st[k];});tot.Total+=c;
+      const suff=' ('+c+')';const base=n||'(Unspecified)';const avail=31-suff.length;
+      const nm=(base.length>avail?base.slice(0,avail):base)+suff;
+      XLSX.utils.book_append_sheet(wb,ws,nm);
+      sum.push({Group:base,Total:c,...st});
+      html+=`<div class='line'><strong>${key}:</strong> ${base} — <strong>${c}</strong>
+        <div class='subcounts'>Regular: ${st.Regular} • Regular Life: ${st['Regular Life']}
+        • Former Member: ${st['Former Member']} • Non Member: ${st['Non Member']}
+        ${st.Other?`• Other: ${st.Other}`:''}</div></div>`;
+    });
+    const sdata=[['Total Members:',tot.Total],[],['Group','Total','Regular','Regular Life','Former Member','Non Member','Other']];
+    sum.forEach(r=>sdata.push([r.Group,r.Total,r.Regular,r['Regular Life'],r['Former Member'],r['Non Member'],r.Other]));
+    sdata.push(['Totals',tot.Total,tot.Regular,tot['Regular Life'],tot['Former Member'],tot['Non Member'],tot.Other]);
+    const wsSum=XLSX.utils.aoa_to_sheet(sdata);
+    XLSX.utils.book_append_sheet(wb,wsSum,'Summary');wb.SheetNames.unshift(wb.SheetNames.pop());
+    window._wb=wb;countsEl.innerHTML=html;summaryEl.textContent=`Created ${groups.length} sheets by ${key}`;
+    saveBtn.disabled=false;setStatus('Ready to save.');
+  }
+
+  buildBtn.onclick=build;
+  saveBtn.onclick=()=>{
+    if(!window._wb){alert('Generate first');return;}
+    const mode=groupBySel.value||'District';
+    const suf=(mode==='DistrictSortedBySquadron')?'district_sorted_by_squadron':'by_'+mode.toLowerCase();
+    const def='member_split_'+suf+'.xlsx';
+    const wbout=XLSX.write(window._wb,{bookType:'xlsx',type:'array'});
+    const blob=new Blob([wbout],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=def;
+    document.body.appendChild(a);a.click();a.remove();setStatus('Downloaded Excel.');
+  };
+})();
+</script>
+</body>
+</html>
